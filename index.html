@@ -19,7 +19,7 @@ function doPost(e) {
       data.notes || ''
     ]);
     
-    Logger.log('Data appended successfully'); 
+    Logger.log('Data appended successfully');
     
     return ContentService.createTextOutput(JSON.stringify({
       status: 'success'
