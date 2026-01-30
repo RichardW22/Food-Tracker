@@ -1,0 +1,35 @@
+function doPost(e) {
+  try {
+    Logger.log('Received request');
+    Logger.log('Post data: ' + e.postData.contents);
+    
+    const sheet = SpreadsheetApp.openById('1DqW1iosilbXGXsEIkJR4iJoFyZGTMgWlDPtmqYv0TsA').getActiveSheet();
+    const data = JSON.parse(e.postData.contents);
+    
+    Logger.log('Parsed data: ' + JSON.stringify(data));
+    
+    sheet.appendRow([
+      data.name,
+      data.timestamp,
+      data.timeStartedThinking,
+      data.moodDuringDay,
+      data.emotionsAfter,
+      data.triggers,
+      data.moodBeforeSleep,
+      data.notes || ''
+    ]);
+    
+    Logger.log('Data appended successfully');
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'success'
+    })).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch (error) {
+    Logger.log('Error: ' + error.toString());
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'error',
+      message: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
