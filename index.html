@@ -1,38 +1,414 @@
 <!DOCTYPE html>
-function doPost(e) {
-  try {
-    Logger.log('Received request');
-    Logger.log('Post data: ' + e.postData.contents);
-    
-    const sheet = SpreadsheetApp.openById('1DqW1iosilbXGXsEIkJR4iJoFyZGTMgWlDPtmqYv0TsA').getActiveSheet();
-    const data = JSON.parse(e.postData.contents);
-    
-    Logger.log('Parsed data: ' + JSON.stringify(data));
-    
-    sheet.appendRow([
-      data.name,
-      data.timestamp,
-      data.timeStartedThinking,
-      data.moodDuringDay,
-      data.emotionsAfter,
-      data.triggers,
-      data.moodBeforeSleep,
-      data.notes || ''
-    ]);
-    
-    Logger.log('Data appended successfully');
-    
-    return ContentService.createTextOutput(JSON.stringify({
-      status: 'success'
-    })).setMimeType(ContentService.MimeType.JSON);
-    
-  } catch (error) {
-    Logger.log('Error: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
-      status: 'error',
-      message: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-/index.html
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#10b981">
+    <meta name="description" content="Track food behaviors and emotions">
+    <title>Food Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbylK19H7pgE_1H3571E0C-WN74SvtjGaX9Ep_4X1VSPEDb5n7SM0XgUzOP05PxUVk4MJA/exec';
+
+        const FoodTracker = () => {
+            const [entries, setEntries] = useState([]);
+            const [showForm, setShowForm] = useState(false);
+            const [userName, setUserName] = useState('');
+            const [showNamePrompt, setShowNamePrompt] = useState(true);
+            const [formData, setFormData] = useState({
+                timeStartedThinking: '',
+                moodDuringDay: '',
+                emotionsAfter: '',
+                triggers: '',
+                moodBeforeSleep: '',
+                notes: ''
+            });
+
+            const moods = ['Neutral', 'Sad', 'Very Sad', 'Happy', 'Very Happy', 'Anxious', 'Angry', 'Calm'];
+            const moodColors = {
+                'Very Happy': 'bg-green-500',
+                'Happy': 'bg-green-400',
+                'Neutral': 'bg-gray-400',
+                'Sad': 'bg-blue-400',
+                'Very Sad': 'bg-blue-600',
+                'Anxious': 'bg-yellow-500',
+                'Angry': 'bg-red-500',
+                'Calm': 'bg-purple-400'
+            };
+
+            useEffect(() => {
+                const savedName = localStorage.getItem('food-tracker-username');
+                if (savedName) {
+                    setUserName(savedName);
+                    setShowNamePrompt(false);
+                }
+                loadData();
+            }, []);
+
+            const handleNameSubmit = () => {
+                if (userName.trim()) {
+                    localStorage.setItem('food-tracker-username', userName.trim());
+                    setShowNamePrompt(false);
+                }
+            };
+
+            const loadData = () => {
+                try {
+                    const saved = localStorage.getItem('food-entries');
+                    if (saved) {
+                        setEntries(JSON.parse(saved));
+                    }
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                }
+            };
+
+            const saveData = (newEntries) => {
+                try {
+                    localStorage.setItem('food-entries', JSON.stringify(newEntries));
+                } catch (error) {
+                    console.error('Error saving data:', error);
+                }
+            };
+
+            const sendToGoogleSheets = async (entry) => {
+                try {
+                    const response = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            name: userName,
+                            timestamp: entry.timestamp,
+                            timeStartedThinking: entry.timeStartedThinking,
+                            moodDuringDay: entry.moodDuringDay,
+                            emotionsAfter: entry.emotionsAfter,
+                            triggers: entry.triggers,
+                            moodBeforeSleep: entry.moodBeforeSleep,
+                            notes: entry.notes
+                        })
+                    });
+                    console.log('Data sent to Google Sheets');
+                } catch (error) {
+                    console.error('Error sending to Google Sheets:', error);
+                }
+            };
+
+            const handleSubmit = () => {
+                if (!formData.timeStartedThinking || !formData.moodDuringDay || !formData.emotionsAfter || !formData.triggers) {
+                    alert('Please fill in all required fields');
+                    return;
+                }
+                
+                const newEntry = {
+                    ...formData,
+                    id: Date.now(),
+                    timestamp: new Date().toISOString()
+                };
+                
+                sendToGoogleSheets(newEntry);
+                
+                const updatedEntries = [newEntry, ...entries];
+                setEntries(updatedEntries);
+                saveData(updatedEntries);
+                setFormData({
+                    timeStartedThinking: '',
+                    moodDuringDay: '',
+                    emotionsAfter: '',
+                    triggers: '',
+                    moodBeforeSleep: '',
+                    notes: ''
+                });
+                setShowForm(false);
+            };
+
+            const deleteEntry = (id) => {
+                const updatedEntries = entries.filter(e => e.id !== id);
+                setEntries(updatedEntries);
+                saveData(updatedEntries);
+            };
+
+            const formatDate = (timestamp) => {
+                const date = new Date(timestamp);
+                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            };
+
+            const exportData = () => {
+                const reportData = {
+                    userName: userName,
+                    totalEntries: entries.length,
+                    allEntries: entries.map(e => ({
+                        date: formatDate(e.timestamp),
+                        timeStartedThinking: e.timeStartedThinking,
+                        moodDuringDay: e.moodDuringDay,
+                        emotionsAfter: e.emotionsAfter,
+                        triggers: e.triggers,
+                        moodBeforeSleep: e.moodBeforeSleep,
+                        notes: e.notes
+                    }))
+                };
+
+                const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `food-tracker-${userName}-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            if (showNamePrompt) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 p-4 flex items-center justify-center">
+                        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+                            <h1 className="text-3xl font-bold text-gray-800 mb-4">Welcome to Food Tracker</h1>
+                            <p className="text-gray-600 mb-6">
+                                Track your thoughts, emotions, and behaviors around food. Your entries will be saved to help identify patterns.
+                            </p>
+                            <p className="text-sm text-gray-500 mb-4">
+                                ⚠️ Your data will be shared with the researcher. Choose how you identify yourself.
+                            </p>
+                            <input
+                                type="text"
+                                value={userName}
+                                onChange={(e) => setUserName(e.target.value)}
+                                placeholder="Enter your name or identifier"
+                                className="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                onKeyPress={(e) => e.key === 'Enter' && handleNameSubmit()}
+                            />
+                            <button
+                                onClick={handleNameSubmit}
+                                disabled={!userName.trim()}
+                                className="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            >
+                                Continue
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 p-4">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-gray-800">Food Tracker</h1>
+                                    <p className="text-sm text-gray-600">Tracking as: {userName}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={exportData}
+                                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm"
+                                    >
+                                        Export
+                                    </button>
+                                    <button
+                                        onClick={() => setShowForm(!showForm)}
+                                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition text-sm"
+                                    >
+                                        + New Entry
+                                    </button>
+                                </div>
+                            </div>
+
+                            {showForm && (
+                                <div className="bg-gray-50 p-6 rounded-lg mb-6">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Time Started Thinking About This *
+                                            </label>
+                                            <input
+                                                type="time"
+                                                value={formData.timeStartedThinking}
+                                                onChange={(e) => setFormData({ ...formData, timeStartedThinking: e.target.value })}
+                                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Mood State During Day *
+                                            </label>
+                                            <select
+                                                value={formData.moodDuringDay}
+                                                onChange={(e) => setFormData({ ...formData, moodDuringDay: e.target.value })}
+                                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                            >
+                                                <option value="">Select mood</option>
+                                                {moods.map(mood => (
+                                                    <option key={mood} value={mood}>{mood}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Emotions After *
+                                            </label>
+                                            <select
+                                                value={formData.emotionsAfter}
+                                                onChange={(e) => setFormData({ ...formData, emotionsAfter: e.target.value })}
+                                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                            >
+                                                <option value="">Select emotions</option>
+                                                {moods.map(mood => (
+                                                    <option key={mood} value={mood}>{mood}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Triggers *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.triggers}
+                                                onChange={(e) => setFormData({ ...formData, triggers: e.target.value })}
+                                                placeholder="What triggered these thoughts/behaviors?"
+                                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Mood Before Sleep
+                                            </label>
+                                            <select
+                                                value={formData.moodBeforeSleep}
+                                                onChange={(e) => setFormData({ ...formData, moodBeforeSleep: e.target.value })}
+                                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                            >
+                                                <option value="">Select mood</option>
+                                                {moods.map(mood => (
+                                                    <option key={mood} value={mood}>{mood}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Notes/Reflections
+                                            </label>
+                                            <textarea
+                                                value={formData.notes}
+                                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                                placeholder="Any additional thoughts or reflections..."
+                                                rows="3"
+                                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={handleSubmit}
+                                                className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
+                                            >
+                                                Save Entry
+                                            </button>
+                                            <button
+                                                onClick={() => setShowForm(false)}
+                                                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {entries.length > 0 && (
+                                <div className="mb-6 p-4 bg-green-50 rounded-lg">
+                                    <h2 className="text-lg font-semibold text-gray-800 mb-2">Summary</h2>
+                                    <p className="text-sm text-gray-600">Total entries: {entries.length}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-4">
+                            {entries.length === 0 ? (
+                                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                                    <p>No entries yet. Click "+ New Entry" to start tracking.</p>
+                                    <p className="text-sm mt-2">Data saves locally and sends to Google Sheets.</p>
+                                </div>
+                            ) : (
+                                entries.map(entry => (
+                                    <div key={entry.id} className="bg-white rounded-lg shadow-md p-6">
+                                        <div className="flex items-start justify-between mb-3">
+                                            <h3 className="text-xl font-semibold text-gray-800">{formatDate(entry.timestamp)}</h3>
+                                            <button
+                                                onClick={() => deleteEntry(entry.id)}
+                                                className="text-red-500 hover:text-red-700 p-1 text-sm"
+                                            >
+                                                🗑️
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex gap-2">
+                                                <span className="font-medium text-gray-600">Time Started Thinking:</span>
+                                                <span className="text-gray-800">{entry.timeStartedThinking}</span>
+                                            </div>
+                                            
+                                            <div className="flex gap-2 items-center">
+                                                <span className="font-medium text-gray-600">Mood During Day:</span>
+                                                <span className={`${moodColors[entry.moodDuringDay]} w-3 h-3 rounded-full inline-block`}></span>
+                                                <span className="text-gray-800">{entry.moodDuringDay}</span>
+                                            </div>
+                                            
+                                            <div className="flex gap-2 items-center">
+                                                <span className="font-medium text-gray-600">Emotions After:</span>
+                                                <span className={`${moodColors[entry.emotionsAfter]} w-3 h-3 rounded-full inline-block`}></span>
+                                                <span className="text-gray-800">{entry.emotionsAfter}</span>
+                                            </div>
+                                            
+                                            <div>
+                                                <span className="font-medium text-gray-600">Triggers:</span>
+                                                <p className="text-gray-800 mt-1">{entry.triggers}</p>
+                                            </div>
+                                            
+                                            {entry.moodBeforeSleep && (
+                                                <div className="flex gap-2 items-center">
+                                                    <span className="font-medium text-gray-600">Mood Before Sleep:</span>
+                                                    <span className={`${moodColors[entry.moodBeforeSleep]} w-3 h-3 rounded-full inline-block`}></span>
+                                                    <span className="text-gray-800">{entry.moodBeforeSleep}</span>
+                                                </div>
+                                            )}
+                                            
+                                            {entry.notes && (
+                                                <div className="pt-2 border-t border-gray-200">
+                                                    <span className="font-medium text-gray-600">Notes/Reflections:</span>
+                                                    <p className="text-gray-700 mt-1">{entry.notes}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<FoodTracker />, document.getElementById('root'));
+    </script>
+</body>
+</html>
